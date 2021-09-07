@@ -1,0 +1,1088 @@
+/*============================================================================================================
+*Class Name     : DumpsterInvoiceTriggerHandler
+*Description    : All the implementations related to Dumpsters object should be handled here
+*Company        : Merfantz Technologies Pvt Ltd
+*Date           : 18th Dec, 2018
+*Version        : 1.0
+*Change History : DumpsterInvoiceTriggerHandler
+*Methods        : public void onAfterInsert(Map<id,Dumpster_Invoice__c> NewDumpInvoiceMap,Map<id,Dumpster_Invoice__c> oldDumpInvoiceMap)
+public void onAfterUpdate(Map<id,Dumpster_Invoice__c> NewDumpInvoiceMap,Map<id,Dumpster_Invoice__c> oldDumpInvoiceMap)
+public static void SendWithAttachments(string  NewDumpsterserialized,string OldDumpsterserialized)
+*============================================================================================================*/
+
+
+
+public class DumpsterInvoiceTriggerHandler {
+        
+    
+    /*------------------------------------------------------------------------------------------------------------
+Method Name: onAfterInsert(Map<id,Dumpster_Invoice__c> NewDumpInvoiceMap,Map<id,Dumpster_Invoice__c> oldDumpInvoiceMap)
+-------------------------------------------------------------------------------------------------------------*/
+    
+    public void onAfterInsert(Map<id,Dumpster_Invoice__c> NewDumpInvoiceMap,Map<id,Dumpster_Invoice__c> oldDumpInvoiceMap){
+        //SendWithAttachments(JSON.serialize(NewDumpInvoiceMap),JSON.serialize(oldDumpInvoiceMap));
+        
+    }
+    /*------------------------------------------------------------------------------------------------------------
+Method Name: onbeforeDelete(Map<id,Dumpster_Invoice__c> NewDumpInvoiceMap)
+-------------------------------------------------------------------------------------------------------------*/
+    public void onbeforeDelete(Map<id,Dumpster_Invoice__c> NewDumpInvoiceMap){
+        System.debug(userinfo.getProfileId());
+        if(Label.Invoice_Delete_Access_Decline_Profile.Contains(String.valueOf(userinfo.getProfileId()).substring(0, 15))){
+            DeleteValidate(NewDumpInvoiceMap);
+        }
+        
+    }
+    
+    public void onbeforeupdate(Map<id,Dumpster_Invoice__c> NewDumpInvoiceMap,Map<id,Dumpster_Invoice__c> oldDumpInvoiceMap)
+    {
+        Map<id,Dumpster_Invoice__c> FilteredDumpInvoiceMap = new Map<id,Dumpster_Invoice__c>();
+        
+        for(Dumpster_Invoice__c Dumpster_Invoice_For : NewDumpInvoiceMap.values())
+        {
+            if(Dumpster_Invoice_For.Card_Run__c != oldDumpInvoiceMap.get(Dumpster_Invoice_For.Id).Card_Run__c && Dumpster_Invoice_For.Weekly_Consolidate_Invoice__c != null && Dumpster_Invoice_For.Weekly_Consolidate_Invoice__c != '')
+            {
+                FilteredDumpInvoiceMap.put(Dumpster_Invoice_For.Id, Dumpster_Invoice_For);
+            }
+            
+        }
+        
+        if(FilteredDumpInvoiceMap.size() > 0)
+        {
+            updateweeklycardrun(FilteredDumpInvoiceMap);
+        }
+    }
+   /* -----------------------------------------------------------------------------------------------------------
+      Public void InvoiceCommentUpdate(Map<id,Dumpster__c> newdumpMap)
+      // set<id>DumpsterIds = new set<id>();
+        // list<Dumpster_Invoice__c> DumpsterInvlist = new list<Dumpster_Invoice__c>();
+         
+         for(Dumpsters__c dump : newDumpsterMap.values())
+         {
+             DumpsterIds.add(dump.id);    
+             system.debug(DumpsterIds);
+         }
+         
+         
+         
+         for(Dumpster_Invoice__c  dumpsterInvFor: [Select id,Invoicing_Comments__c,Interim__c,Dumpsters__r.Invoicing_Comments_Final__c from Dumpster_Invoice__c where 
+         {
+            if(Dumpsters__r.Invoicing_Comments_Final__c!=null) && (Dumpsters__r.Invoicing_Comments_Final__c.contains(Interim)
+            dump.Invoicing_Comments_Final__c = dumpsterInvFor.Invoicing_Comments__c;
+             
+             DumpsterInvlist.add(DumpsterInvFor);
+            // system.debug(shavingInvlist);
+    
+    }*/
+    
+    /*------------------------------------------------------------------------------------------------------------
+Method Name: onAfterUpdate(Map<id,Dumpster_Invoice__c> NewDumpInvoiceMap,Map<id,Dumpster_Invoice__c> oldDumpInvoiceMap)
+-------------------------------------------------------------------------------------------------------------*/
+    
+    public void onAfterUpdate(Map<id,Dumpster_Invoice__c> NewDumpInvoiceMap,Map<id,Dumpster_Invoice__c> oldDumpInvoiceMap){
+        
+        Map<Id, Dumpster_Invoice__c> FilteredDeleteRecords = new Map<Id, Dumpster_Invoice__c>();
+        Map<Id, Dumpster_Invoice__c> FilteredApprovedRecords = new Map<Id, Dumpster_Invoice__c>();
+        Set<Id> DumpsterInvoiceIdSet = new Set<Id>();
+        
+        If(!TrggrUtility.RunOnceDI) {
+            TrggrUtility.RunOnceDI=true;
+            SendAttachment(NewDumpInvoiceMap,oldDumpInvoiceMap);
+            UpdateCardrun(NewDumpInvoiceMap,oldDumpInvoiceMap);
+            
+        }
+        
+        for(Dumpster_Invoice__c Dumpster_Invoice_For : NewDumpInvoiceMap.values())
+        {
+            if(Dumpster_Invoice_For.Delete_Final_Invoice__c && Dumpster_Invoice_For.Delete_Final_Invoice__c != oldDumpInvoiceMap.get(Dumpster_Invoice_For.Id).Delete_Final_Invoice__c)
+            {
+                FilteredDeleteRecords.put(Dumpster_Invoice_For.Id, Dumpster_Invoice_For);
+            }
+            
+            if(Dumpster_Invoice_For.Invoice_Pending_To_Approve__c == 'Approved' && Dumpster_Invoice_For.Invoice_Pending_To_Approve__c != oldDumpInvoiceMap.get(Dumpster_Invoice_For.Id).Invoice_Pending_To_Approve__c)
+            {
+                FilteredApprovedRecords.put(Dumpster_Invoice_For.Id, Dumpster_Invoice_For);
+            }
+            
+            if(Dumpster_Invoice_For.Copy_Invoice_Sent__c != oldDumpInvoiceMap.get(Dumpster_Invoice_For.Id).Copy_Invoice_Sent__c && Dumpster_Invoice_For.Send_Landfill_Receipt__c)
+            {
+                DumpsterInvoiceIdSet.add(Dumpster_Invoice_For.Id);
+            }
+        }
+        
+        if(DumpsterInvoiceIdSet.size() > 0)
+        {
+            send_copy_invoice_email_landfill(DumpsterInvoiceIdSet);
+        }
+        
+        if(FilteredDeleteRecords.size()>0)
+        {
+            Delete_Final_Invoice(FilteredDeleteRecords);
+        }
+        
+        if(FilteredApprovedRecords.size() > 0 )
+        {
+            updateordervalueandinvoice(FilteredApprovedRecords);
+        }
+    }
+    
+    public static void SendAttachment(Map<id,Dumpster_Invoice__c> NewDumpInvoiceMapVal,Map<id,Dumpster_Invoice__c> oldDumpInvoiceMapVal){
+        List<Id> DumpsterIdList = new List<Id>();
+        List<Dumpster_Invoice__c> DumpsterInvoiceList = new List<Dumpster_Invoice__c>();
+        List<Id> DumpsterInvoiceListID = new List<Id>();
+        Set<Id> DumpsterInvoiceIdSet = new Set<Id>();
+        
+        for(Dumpster_Invoice__c DumpInvValues:NewDumpInvoiceMapVal.values()){
+            
+            if(oldDumpInvoiceMapVal == null || (oldDumpInvoiceMapVal != null && oldDumpInvoiceMapVal.get(DumpInvValues.id).Invoice_Pending_To_Approve__c != DumpInvValues.Invoice_Pending_To_Approve__c && DumpInvValues.Invoice_Pending_To_Approve__c=='Approved' && (!DumpInvValues.Blank_Email__c || DumpInvValues.Contains_Warren_Email__c)))
+            {
+                System.debug('Inside Send Attachment');
+                if(DumpInvValues.Weekly_Consolidate_Invoice__c != null)
+                {
+                    DumpsterInvoiceIdSet.add(DumpInvValues.Id);
+                    System.debug('Inside Send Attachment11');
+                }
+                else if(DumpInvValues.Send_Landfill_Receipt__c)
+                {
+                    SendWithAttachments(DumpInvValues.Dumpsters__c,DumpInvValues.id, DumpInvValues.Account__c);
+                    System.debug('Inside Send Attachment222');
+                }
+                
+                //DumpsterIdList.add(DumpInvValues.Dumpsters__c);
+                //DumpsterInvoiceListID.add(DumpInvValues.id);
+            }
+            
+        }
+        
+        if(DumpsterInvoiceIdSet.size() > 0)
+        {
+            SendWithAttachments(DumpsterInvoiceIdSet);
+        }
+        //SendWithAttachments(DumpsterIdList,DumpsterInvoiceListID);
+    } //calling the future handler
+    /*=================Ticket No : 45423===================================
+*Method Name     : DeleteValidate
+*Description     : Every dumpster record that is added, must be entered with a zip code. 
+*Arguments       : Dumpster newList
+====================================================*/
+    
+    public static void DeleteValidate(Map<Id,Dumpster_Invoice__c> newdumpinvoice){
+        
+        for(Dumpster_Invoice__c DumpInv : newdumpinvoice.Values()){
+            DumpInv.addError('Ask your manager to delete this record');
+        }
+    }
+    /*==================Ticket No : 12561==================================
+
+*Method Name     : UpdateCardRun
+*Description     : Whenever CardRun field is updated the related dumpster CardRun also updated
+*Arguments       : Dumpster invoice newMap,OldMap
+====================================================*/
+    
+    
+    public static void UpdateCardRun(Map<id,Dumpster_Invoice__c> NewDumpInvoiceMapVal, Map<id,Dumpster_Invoice__c> oldDumpInvoiceMapVal){
+        List<Dumpsters__c> dumplist = new List<Dumpsters__c>();
+        Set<Dumpsters__c> dumpSetlist = new Set<Dumpsters__c>();
+        Set<Id> DumpsterInvoiceIds = new Set<Id>();
+        List<Dumpster_Invoice__c> dumpInvlist = new List<Dumpster_Invoice__c>();
+        Dumpsters__c dum ;
+        for(Dumpster_Invoice__c dumInv : NewDumpInvoiceMapVal.values())
+        {
+            system.debug('Dumpster Invoice Trigger Handler' + dumInv.Name);
+            if((dumInv.Interim_Invoice_Helper__c || (dumInv.Invoicing_Comments__c != null && dumInv.Invoicing_Comments__c.containsignorecase('interim'))) && (Schema.SObjectType.Dumpster_Invoice__c.getRecordTypeInfosByName().get('Final Invoice').getRecordTypeId() == dumInv.RecordTypeId || Schema.SObjectType.Dumpster_Invoice__c.getRecordTypeInfosByName().get('Consolidated Invoice').getRecordTypeId() == dumInv.RecordTypeId))
+            {
+                system.debug('Dumpster Invoice Trigger Handler Inside If');
+                DumpsterInvoiceIds.add(dumInv.id);
+            }
+            else
+            {    
+                system.debug('else part><><');
+                dum = new Dumpsters__c();
+                dum.id = dumInv.Dumpsters__c;
+                dum.Card_run__c = dumInv.Card_Run__c;
+                dumpSetlist.add(dum);                                       
+            }
+        }
+        
+        if(dumpSetlist.size()>0)
+        {
+            dumplist.addall(dumpSetlist);
+        }
+        
+        for(Dumpster_Invoice__c dumInv : [Select id, Interim_Invoice_Helper__c from Dumpster_Invoice__c where id =: DumpsterInvoiceIds])
+        {
+            if(dumInv.Interim_Invoice_Helper__c)
+            {
+                dumInv.Interim_Invoice_Helper__c = false;
+                dumpInvlist.add(dumInv);
+            }
+        }
+        try{
+            update dumplist;
+            if(dumpInvlist.size()>0)
+            {
+                update dumpInvlist;
+            }
+        }catch(exception e){
+            system.debug('Exception raised due to --------------------------->'+e);
+        }
+    }
+    
+    /*----------------------------------- Ticket - 32896 ---------------------------------------------------------------
+Method Name:  SendWithAttachments(string  NewDumpsterserialized,string OldDumpsterserialized)
+-------------------------------------------------------------------------------------------------------------*/    
+    public void Delete_Final_Invoice(Map<id, Dumpster_Invoice__c> NewDumpInvoiceMapVal)
+    {
+        Set<Id> DumpstersId = new Set<Id>();
+        Set<Id> DumpsterInvoicesId = new Set<Id>();
+        List<Dumpsters__c> DumpstersUpdate = new List<Dumpsters__c>();
+        List<Dumpster_Invoice__c> DumpsterInvoiceUpdate = new List<Dumpster_Invoice__c>();
+        Map<id, Dumpster_Invoice__c> Initial_Invoice_Map = new Map<id, Dumpster_Invoice__c>();
+        List<Dumpster_Invoice__c> DumpsterInvoiceDelete = new List<Dumpster_Invoice__c>();
+        
+        for(Dumpster_Invoice__c Dumpster_Invoice_For : NewDumpInvoiceMapVal.values())
+        {
+            DumpstersId.add(Dumpster_Invoice_For.Dumpsters__c);
+            DumpsterInvoicesId.add(Dumpster_Invoice_For.Id);
+            //DumpsterInvoiceDelete.add(Dumpster_Invoice_For);
+        }
+        
+        for(Dumpster_Invoice__c Dumpster_Invoice_For : [Select id, Name from Dumpster_Invoice__c where Id =: DumpsterInvoicesId])
+        {
+            DumpsterInvoiceDelete.add(Dumpster_Invoice_For);
+        }
+        
+        for(Dumpster_Invoice__c Dumpster_Invoice_For : [Select id, Name, Dumpster_Invoice_Total__c, Card_run__c, Dumpsters__c from Dumpster_Invoice__c where Dumpsters__c =: DumpstersId and RecordType.Name =: Label.Initial_Invoice])
+        {
+            Initial_Invoice_Map.put(Dumpster_Invoice_For.Dumpsters__c, Dumpster_Invoice_For);
+        }
+        system.debug(Initial_Invoice_Map);
+        for(Dumpsters__c DumpsterFor : [Select id, Name, Status__c, Card_Run__c, Final_Invoice_Number__c, Invoiced_Amount__c, Initial_Invoice_Number__c from Dumpsters__c where Id =: DumpstersId])
+        {
+            
+          DumpsterFor.Status__c = 'Cycle Complete';
+            DumpsterFor.Final_Invoice_Number__c = 0;
+            if((DumpsterFor.Card_Run__c != null) && (!DumpsterFor.Card_Run__C.containsIgnoreCase(Label.Final_Invoice)))
+            {
+                DumpsterFor.Card_run__c = DumpsterFor.Card_run__c +';'+Label.Final_Invoice;
+            }
+            else
+            {
+                DumpsterFor.Card_run__c = Label.Final_Invoice;
+            }
+            if(Initial_Invoice_Map.containsKey(DumpsterFor.Id))
+            {
+                if((Initial_Invoice_Map.get(DumpsterFor.Id).Card_Run__c != null) && (!Initial_Invoice_Map.get(DumpsterFor.Id).Card_Run__c.containsIgnoreCase(Label.Final_Invoice)))
+                {
+                    Initial_Invoice_Map.get(DumpsterFor.Id).Card_Run__c = Initial_Invoice_Map.get(DumpsterFor.Id).Card_Run__c +';'+Label.Final_Invoice;
+                    DumpsterInvoiceUpdate.add(Initial_Invoice_Map.get(DumpsterFor.Id));
+                }
+                else
+                {
+                    Initial_Invoice_Map.get(DumpsterFor.Id).Card_Run__c = Label.Final_Invoice;
+                    DumpsterInvoiceUpdate.add(Initial_Invoice_Map.get(DumpsterFor.Id));
+                }
+            }
+            System.debug(DumpsterFor.Invoiced_Amount__c + '<--->' + Initial_Invoice_Map.containsKey(DumpsterFor.Id));
+            if(DumpsterFor.Invoiced_Amount__c == null && Initial_Invoice_Map.containsKey(DumpsterFor.Id))
+            {
+                DumpsterFor.Invoiced_Amount__c = Initial_Invoice_Map.get(DumpsterFor.Id).Dumpster_Invoice_Total__c;
+            }
+            
+            if(DumpsterFor.Initial_Invoice_Number__c == null && Initial_Invoice_Map.containsKey(DumpsterFor.Id))
+            {
+                DumpsterFor.Initial_Invoice_Number__c = Integer.valueOf(Initial_Invoice_Map.get(DumpsterFor.Id).Name.Replace('SF-',''));
+            }
+            
+            DumpstersUpdate.add(DumpsterFor);
+            
+        }
+        
+        if(DumpstersUpdate.size()>0)
+        {
+            try
+            {
+                delete DumpsterInvoiceDelete;
+                update DumpstersUpdate;
+                if(DumpsterInvoiceUpdate.size() > 0)
+                {
+                    update DumpsterInvoiceUpdate;
+                }
+            }
+            catch(Exception e)
+            {
+                for(Dumpster_Invoice__c Dumpster_Invoice_For : NewDumpInvoiceMapVal.values())
+                {
+                    if(e.getmessage().contains('FIELD_CUSTOM_VALIDATION_EXCEPTION'))
+                    {
+                        Dumpster_Invoice_For.adderror(e.getmessage().substringafter('FIELD_CUSTOM_VALIDATION_EXCEPTION'));
+                    }
+                    else
+                    {
+                        Dumpster_Invoice_For.adderror(e.getmessage());
+                    }
+                }
+            }
+        }
+    }
+    
+    /*------------------------------------------------------------------------------------------------------------
+Method Name:  SendWithAttachments(string  NewDumpsterserialized,string OldDumpsterserialized)
+-------------------------------------------------------------------------------------------------------------*/
+    
+    
+    
+    @future(callout=true)
+    public static void SendWithAttachments(id DumpsterIdVal,id DumpsterInvoiceIDVal, Id AccountId){
+        //Map<id,Dumpster_Invoice__c> NewDumInvoiceMap=(Map<id, Dumpster_Invoice__c>) JSON.deserialize(NewDumpsterserialized, Map<id, Dumpster_Invoice__c>.class);
+        //Map<id,Dumpster_Invoice__c> oldDumInvoiceMap=(Map<id, Dumpster_Invoice__c>) JSON.deserialize(OldDumpsterserialized, Map<id, Dumpster_Invoice__c>.class);
+        system.debug('normal mail sent>>>');
+        Id OrgWideAddressId;
+        List<Id> DumpsterIdList = new List<Id>();
+        List<Dumpster_Invoice__c> DumpsterInvoiceList = new List<Dumpster_Invoice__c>();
+        List<Id> DumpsterInvoiceListID = new List<Id>();
+        List<ID> ContenDocLinkListID   = new List<Id>();
+        DateTime attachmentaddeddate;DateTime FileAddedDate;
+        Map<id,List<Attachment>> newAttachmentMap = new Map<id,List<Attachment>>();
+        Dumpster_Invoice_Email_Helper__c DInvoiceHelper = Dumpster_Invoice_Email_Helper__c.getValues('Send Landfill Receipt');
+        Map<Id, Drop_off_Invoice_Email__c> DropOffInEmail = new Map<Id, Drop_off_Invoice_Email__c>();
+        List<id> DumpAccList=new LIst<id>();
+        List<id> CustomDumpAccList = new List<id>();
+        
+        for(Drop_off_Invoice_Email__c DropOffnvoiceFor : Drop_off_Invoice_Email__c.getAll().values())
+        {
+            if(DropOffnvoiceFor.Active__c)
+            {
+                DropOffInEmail.put(DropOffnvoiceFor.Account_Id__c, DropOffnvoiceFor);
+            }
+        }
+        if(DInvoiceHelper.Is_Active__c){ // Its a control switch we can turn on or off the below feature on production
+            
+            if(DumpsterIdVal !=null && DumpsterInvoiceIDVal!=null)
+            {
+                /*for(dumpster_invoice__c dumpfor: [Select Account__c from dumpster_invoice__c where id=:DumpsterInvoiceIDVal])
+                {*/
+                if(DropOffInEmail.containskey(AccountId))
+                {
+                    for(Attachment AttachmentVal : [SELECT ParentId, Name, body, ContentType,createddate  FROM Attachment WHERE ParentId =: DumpsterIdval order by createddate desc]){
+                    
+                    if(newAttachmentMap.containskey(AttachmentVal.ParentId)){
+                        newAttachmentMap.get(AttachmentVal.ParentId).add(AttachmentVal);
+                        attachmentaddeddate=AttachmentVal.createddate;
+                    }
+                    else{
+                        newAttachmentMap.put(AttachmentVal.ParentId, new List<Attachment>{AttachmentVal});
+                        attachmentaddeddate=AttachmentVal.createddate;
+                    }
+                    system.debug(attachmentaddeddate);
+                }
+                
+                for (ContentDocumentLink docLinks : [Select Id,SystemModstamp,ContentDocumentId from ContentDocumentLink where LinkedEntityId = :DumpsterIdval order by SystemModstamp desc]) { 
+                ContenDocLinkListID.add(docLinks.ContentDocumentId);
+                FileAddedDate=docLinks.SystemModstamp;
+                system.debug(docLinks.SystemModstamp+'==='+ContenDocLinkListID);
+                }
+                }
+                else
+                {
+                for(Attachment AttachmentVal : [SELECT ParentId, Name, body, ContentType,createddate  FROM Attachment WHERE ParentId =: DumpsterIdval order by createddate desc limit 1]){
+                    
+                    if(newAttachmentMap.containskey(AttachmentVal.ParentId)){
+                        newAttachmentMap.get(AttachmentVal.ParentId).add(AttachmentVal);
+                        attachmentaddeddate=AttachmentVal.createddate;
+                    }
+                    else{
+                        newAttachmentMap.put(AttachmentVal.ParentId, new List<Attachment>{AttachmentVal});
+                        attachmentaddeddate=AttachmentVal.createddate;
+                    }
+                    system.debug(attachmentaddeddate);
+                }
+                    
+                for (ContentDocumentLink docLinks : [Select Id,SystemModstamp,ContentDocumentId from ContentDocumentLink where LinkedEntityId = :DumpsterIdval order by SystemModstamp desc limit 1]) { 
+                ContenDocLinkListID.add(docLinks.ContentDocumentId);
+                FileAddedDate=docLinks.SystemModstamp;
+                system.debug(docLinks.SystemModstamp+'==='+ContenDocLinkListID);
+                    
+                }   
+                }              
+                //}
+                
+                system.debug(ContenDocLinkListID);
+                system.debug(newAttachmentMap);
+                system.debug(attachmentaddeddate+'<>'+FileAddedDate);
+                system.debug([SELECT ContentDocumentId,VersionData,FileExtension,FileType,Id,Title FROM ContentVersion where ContentDocumentId = :ContenDocLinkListID]);
+                
+                for(Dumpster_Invoice__c DumpInvValues:[select id,name,Dumpster_Sync__c,createdById,Customer_Email__c,Additional_Email__c,Additional_Email2__c,Additional_Email3__c,Account__c,dumpsters__c,dumpsters__r.name from Dumpster_Invoice__c where id=:DumpsterInvoiceIdval]){
+                    
+                    try{
+                        Messaging.SingleEmailMessage mail = new Messaging.SingleEmailMessage();
+                        
+                        //mail.setTemplateId(DInvoiceHelper.Template_Id__c);
+                        mail.setSubject( 'Invoice '+DumpInvValues.name+' from Haulbrooke Dumpster Rental');
+                        
+                        //mail.setPlainTextBody(DInvoiceHelper.Email_Body_Content__c);
+                        mail.setPlainTextBody('Dear Sir / Madam,\n\nPlease find the attached invoice for your records. Please note that the .html attachments need to be downloaded within 30 days from this email date, as they expire after that. This is for our Reference '+DumpInvValues.dumpsters__r.name+'.\n\nThank you for your business - we appreciate it very much. \n\n\nFinance Department \nHaulbrooke \nAustin (512) 265 1000 | Houston (713) 742 6070 | San Antonio (210) 716 0000 \nfinance.department@haul-brooke.com\n\nInternal record link: ' + URL.getSalesforceBaseUrl().toExternalForm() + '/' + DumpInvValues.Id);
+                        
+                        mail.setTargetObjectId(DumpInvValues.CreatedById);
+                        mail.setTreatTargetObjectAsRecipient(false);
+                        mail.saveAsActivity = false;
+                        
+                        String[] xstr=new String[]{};String[] ccaddress=new String[]{};
+                            if(DumpInvValues.Customer_Email__c!=null &&  !(DumpInvValues.Account__r.Name.contains(label.AccountName)) )
+                        { 
+                                xstr.add(DumpInvValues.Customer_Email__c);
+                            }
+                        if(DumpInvValues.Additional_Email__c!=null){ 
+                            xstr.add(DumpInvValues.Additional_Email__c);
+                        }
+                        if(DumpInvValues.Additional_Email2__c!=null){ 
+                            xstr.add(DumpInvValues.Additional_Email2__c);
+                        }
+                        if(DumpInvValues.Additional_Email3__c!=null){ 
+                            xstr.add(DumpInvValues.Additional_Email3__c);
+                        }
+                        if(DInvoiceHelper.CCAddress__c!=null){
+                            ccaddress.add(DInvoiceHelper.CCAddress__c);
+                        }
+                        mail.setCCAddresses(ccaddress);
+                        if(Label.Dumpster_Invoice_BCC !=null && Label.Dumpster_Invoice_BCC !='Test')
+                        {
+                            mail.setBCCAddresses(new String[] {Label.Dumpster_Invoice_BCC});
+                        }
+                        mail.setToAddresses(xstr);
+                        if(DInvoiceHelper.OrgWideAddressId__c!=null){
+                            mail.setOrgWideEmailAddressId(DInvoiceHelper.OrgWideAddressId__c);
+                        }
+                        
+                        Messaging.EmailFileAttachment[] efaList = new Messaging.EmailFileAttachment[]{};
+                            
+                        if(DropOffInEmail.containskey(AccountId))
+                            {
+                                if(newAttachmentMap.containskey(DumpInvValues.dumpsters__c)){
+                                    
+                                    for(Attachment att : newAttachmentMap.get(DumpInvValues.dumpsters__c))
+                                    {  //Create the email attachment Messaging.EmailFileAttachment efa = new Messaging.EmailFileAttachment();
+                                        Messaging.EmailFileAttachment efa = new Messaging.EmailFileAttachment();
+                                        efa.setFileName(att.Name+'.'+att.ContentType);
+                                        efa.setBody(att.body);
+                                        //efa.setContentType(att.ContentType);
+                                        efa.setInline(false);
+                                        efaList.add(efa); 
+                                    }
+                                }
+                            for(ContentVersion FileValue : [SELECT ContentDocumentId,VersionData,FileExtension,FileType,Id,Title FROM ContentVersion where ContentDocumentId = :ContenDocLinkListID and Is_Drop_Off_Image__c =: False ]) {
+                                Messaging.EmailFileAttachment efa = new Messaging.EmailFileAttachment();
+                                efa.setFileName(FileValue.Title+'.'+FileValue.FileExtension);
+                                System.debug(MimeType__c.getValues(FileValue.FileExtension).MIME_Type__c);
+                                //efa.setContentType(MimeType__c.getValues(FileValue.FileExtension).MIME_Type__c); //Title of the PDF
+                                efa.setBody(FileValue.VersionData); //Body of the PDF,need to do transfer into blob
+                                efaList.add(efa);
+                                }
+                            }
+                            else
+                            {    
+                            if(( attachmentaddeddate!=null && FileAddedDate==null) || (attachmentaddeddate>FileAddedDate)){
+                                if(newAttachmentMap.containskey(DumpInvValues.dumpsters__c)){
+                                    
+                                    for(Attachment att : newAttachmentMap.get(DumpInvValues.dumpsters__c))
+                                    {  //Create the email attachment Messaging.EmailFileAttachment efa = new Messaging.EmailFileAttachment();
+                                        Messaging.EmailFileAttachment efa = new Messaging.EmailFileAttachment();
+                                        efa.setFileName(att.Name+'.'+att.ContentType);
+                                        efa.setBody(att.body);
+                                        //efa.setContentType(att.ContentType);
+                                        efa.setInline(false);
+                                        efaList.add(efa); 
+                                    }
+                                }
+                            }
+                        
+                        else if( ( attachmentaddeddate==null && FileAddedDate!=null) || (attachmentaddeddate<FileAddedDate)){
+                        
+                            
+                                for(ContentVersion FileValue : [SELECT ContentDocumentId,VersionData,FileExtension,FileType,Id,Title FROM ContentVersion where ContentDocumentId = :ContenDocLinkListID]) {
+                                Messaging.EmailFileAttachment efa = new Messaging.EmailFileAttachment();
+                                efa.setFileName(FileValue.Title+'.'+FileValue.FileExtension);
+                                System.debug(MimeType__c.getValues(FileValue.FileExtension).MIME_Type__c);
+                                //efa.setContentType(MimeType__c.getValues(FileValue.FileExtension).MIME_Type__c); //Title of the PDF
+                                efa.setBody(FileValue.VersionData); //Body of the PDF,need to do transfer into blob
+                                efaList.add(efa);
+                                
+                            }
+                            }
+                        }
+                        
+                        
+                        system.debug(efaList);
+                        PageReference ref = Page.Invoice_Preview;
+                        ref.getParameters().put('id', String.valueOf(DumpInvValues.Id));
+                        Blob b = ref.getContentAsPDF();
+                        
+                        //Messaging.SingleEmailMessage email = new Messaging.SingleEmailMessage();
+                        
+                        Messaging.EmailFileAttachment efa1 = new Messaging.EmailFileAttachment();
+                        efa1.setFileName('Haulbrooke Invoice '+DumpInvValues.name+'.pdf');
+                        efa1.setBody(b);
+                        efaList.add(efa1);
+                        // Attach files to email instance
+                        mail.setFileAttachments(efaList);
+                        mail.setUseSignature(false);
+                        Messaging.sendEmail(new Messaging.SingleEmailmessage[] {mail}); 
+                        system.debug(' <mail sent>>>');
+                        
+                    } 
+                    catch(exception e){
+                        system.debug('Exception raised due to '+e);
+                    }
+                    
+                }
+                
+            } 
+            
+        }
+    }
+    
+    public void updateordervalueandinvoice(Map<ID, Dumpster_Invoice__c> newMap)
+    {
+        List<Dumpsters__c> DumpstersList = new List<Dumpsters__c>();
+        Set<Id> DumpsterInvoiceIds = new Set<Id>();
+        Map<String, Id> DumpsterName = new Map<String, id>();
+        Map<Id, Dumpster_Invoice__c> DumpstersInvoiceMap = new Map<Id, Dumpster_Invoice__c>();
+        Map<Id, List<Dumpsters__c>> DumpstersMap = new Map<Id, List<Dumpsters__c>>();
+        Map<String, Dumpster_Invoice__c> Original_Invoice = new Map<String, Dumpster_Invoice__c>();
+        
+        for(Id Dumpster_InvoiceFor : newMap.keyset())
+        {
+            DumpsterInvoiceIds.add(Dumpster_InvoiceFor);
+        }
+        
+        for(Dumpster_Invoice__c Dumpster_InvoiceFor : [Select id, Name, Account__c, Weekly_Consolidate_Invoice__c, Dumpster_Invoice_Total__c, Dumpsters__r.Name from Dumpster_Invoice__c where id =: DumpsterInvoiceIds])
+        {
+            DumpstersInvoiceMap.put(Dumpster_InvoiceFor.Id, Dumpster_InvoiceFor);
+            Original_Invoice.put(Dumpster_InvoiceFor.Dumpsters__r.Name, Dumpster_InvoiceFor);
+            if(Dumpster_InvoiceFor.Weekly_Consolidate_Invoice__c != null && Dumpster_InvoiceFor.Weekly_Consolidate_Invoice__c != '')
+            {
+                for(String StringFor : Dumpster_InvoiceFor.Weekly_Consolidate_Invoice__c.split(' - '))
+                {
+                    DumpsterName.put(StringFor, Dumpster_InvoiceFor.Id);
+                }
+            }
+        }
+        
+        for(Dumpsters__c DumpstersFor : [Select id, Name, Invoiced_Amount__c, Initial_Invoice_Number__c, Final_Invoice_Number__c from Dumpsters__c where Name =: DumpsterName.keyset()])
+        {
+            if(DumpsterName.containskey(DumpstersFor.Name))
+            {
+                if(DumpstersInvoiceMap.containskey(DumpsterName.get(DumpstersFor.Name)))
+                {
+                    if(Original_Invoice.containskey(DumpsterName.get(DumpstersFor.Name)))
+                    {
+                        DumpstersFor.Invoiced_Amount__c = DumpstersInvoiceMap.get(DumpsterName.get(DumpstersFor.Name)).Dumpster_Invoice_Total__c;
+                    }
+                    else
+                    {
+                        DumpstersFor.Invoiced_Amount__c = 0;
+                    }
+                    DumpstersFor.Initial_Invoice_Number__c = Decimal.valueOf(DumpstersInvoiceMap.get(DumpsterName.get(DumpstersFor.Name)).Name.substringAfter('SF-'));
+                    DumpstersFor.Final_Invoice_Number__c = Decimal.valueOf(DumpstersInvoiceMap.get(DumpsterName.get(DumpstersFor.Name)).Name.substringAfter('SF-'));
+                   DumpstersFor.Status__c = 'Cycle Complete';
+                    DumpstersList.add(DumpstersFor);
+                }
+            }
+        }
+        
+        if(DumpstersList.size() > 0)
+        {
+            try
+            {
+                update DumpstersList;
+            }
+            catch(Exception e)
+            {
+                System.debug('Exception raised due to ' + e);
+            }
+        }
+        
+    }
+    
+    /*==================Ticket No : 35437 ==================================
+
+*Method Name     : SendWithAttachments
+*Description     : Send Dumpsters with last attachments.
+*Arguments       : DumpsterInvoiceId
+======================================================================*/
+    
+    @future(callout=true)
+    public static void SendWithAttachments(Set<Id> DumpsterInvoiceId)
+    {
+    
+        system.debug('weekly mail sent>>>');
+        List<ContentVersion> InsertContentVersion = new List<ContentVersion>();
+        Set<Id> ContentVersionId = new Set<Id>();
+        Map<String, Attachment> ContentDocuName = new Map<String, Attachment>();
+        List<ContentDocumentLink> InsertContentDocumentLink = new List<ContentDocumentLink>();
+        List<ContentDistribution> ContentDistributionList = new List<ContentDistribution>();
+        List<Messaging.EmailFileAttachment> failedmailattachments = new List<Messaging.EmailFileAttachment>();
+        Map<String, ContentVersion> FailedContentversions = new Map<String, ContentVersion>();
+        Boolean FailedBody = false;
+        
+        Map<Id, Dumpster_Invoice__c> DumpsterInvoiceMap = new Map<Id, Dumpster_Invoice__c>();
+        Set<String> Dumpster_Invoice_Name = new Set<String>();
+        Map<Id, Set<String>> DumpsterName = new Map<Id, Set<String>>();
+        Map<String, Attachment> DumpsterAttachment = new Map<String, Attachment>();
+        Map<String, ContentDistribution> DumpsterContentDistribution = new Map<String, ContentDistribution>();
+        Set<String> DumpsterNamesHelper = new Set<String>();
+        Set<Id> DumpsterName_AttachmentId = new Set<Id>();
+        Map<Id, String> DumpsterName_ContentDocId = new Map<Id, String>();
+        List<Messaging.EmailFileAttachment> mailattachments = new List<Messaging.EmailFileAttachment>();
+        List<Messaging.SingleEmailMessage> maillist = new List<Messaging.SingleEmailMessage>();
+        
+        Dumpster_Invoice_Email_Helper__c DInvoiceHelper = Dumpster_Invoice_Email_Helper__c.getValues('Send Landfill Receipt');
+        
+        for(Dumpster_Invoice__c Dumpster_Invoice_For : [select id,name,Dumpster_Sync__c,Weekly_Consolidate_Invoice__c,createdById,Customer_Email__c,Additional_Email__c,Additional_Email2__c,Additional_Email3__c,Account__c,dumpsters__c,dumpsters__r.name from Dumpster_Invoice__c where id=:DumpsterInvoiceId])
+        {
+            Dumpster_Invoice_Name.add(Dumpster_Invoice_For.Name);
+            DumpsterInvoiceMap.put(Dumpster_Invoice_For.Id, Dumpster_Invoice_For);
+            if(Dumpster_Invoice_For.Weekly_Consolidate_Invoice__c != null )
+            {
+                String[] DumpsterNames = Dumpster_Invoice_For.Weekly_Consolidate_Invoice__c.split(' - ');
+                
+                for(String Stringfor : DumpsterNames)
+                {
+                    if(!DumpsterName.containskey(Dumpster_Invoice_For.Id))
+                    {
+                        DumpsterName.put(Dumpster_Invoice_For.Id, new Set<String>());
+                        DumpsterName.get(Dumpster_Invoice_For.Id).add(Stringfor);
+                    }
+                    else
+                    {
+                        DumpsterName.get(Dumpster_Invoice_For.Id).add(Stringfor);
+                    }
+                    DumpsterNamesHelper.add(Stringfor);
+                }
+            }
+        }
+        system.debug(DumpsterNamesHelper);
+        for(Dumpsters__c DumpstersFor :  [Select id, Name, (Select id, Name, createddate,ContentType from Attachments order by createddate desc Limit 1), (Select Id, SystemModstamp, ContentDocumentId from ContentDocumentLinks order by SystemModstamp desc Limit 1) from Dumpsters__c where Name =: DumpsterNamesHelper])
+        {
+            ContentDocumentLink ContentDocumentLinksFor = new ContentDocumentLink();
+            if(DumpstersFor.ContentDocumentLinks.size() > 0)
+            {
+                ContentDocumentLinksFor =  DumpstersFor.ContentDocumentLinks;
+                DumpsterName_ContentDocId.put(ContentDocumentLinksFor.ContentDocumentId, DumpstersFor.Name);
+            }
+            
+            if(DumpstersFor.Attachments.size() > 0)
+            {
+                Attachment AttachmentFor = DumpstersFor.Attachments;
+                if((DumpstersFor.ContentDocumentLinks.size() > 0 && ContentDocumentLinksFor.SystemModstamp < AttachmentFor.createddate) || DumpstersFor.ContentDocumentLinks.size() == 0)
+                {
+                    DumpsterName_AttachmentId.add(AttachmentFor.Id);
+                    DumpsterName_ContentDocId.remove(ContentDocumentLinksFor.ContentDocumentId);
+                }
+            }
+        }
+        system.debug(DumpsterName_ContentDocId);
+        for(Attachment AttachmentFor : [Select id, Name, Parent.Name, ParentId, Body, ContentType from Attachment where Id =: DumpsterName_AttachmentId])
+        {
+            DumpsterAttachment.put(AttachmentFor.Parent.Name, AttachmentFor);
+            
+            ContentVersion ContentVersionNew = new ContentVersion();
+            ContentVersionNew.Title = AttachmentFor.Name;
+            ContentVersionNew.VersionData = AttachmentFor.Body;
+            ContentVersionNew.PathOnClient = AttachmentFor.Name;
+            InsertContentVersion.add(ContentVersionNew);
+            
+            ContentDocuName.put(AttachmentFor.Name, AttachmentFor);
+        }
+        try
+        {
+            if(InsertContentVersion.size() > 0)
+            {
+                insert InsertContentVersion;
+            }
+        }
+        catch(Exception e)
+        {
+            system.debug(e);
+            SendingErrorEmail(String.valueOf(e), Dumpster_Invoice_Name);
+        }
+        
+        for(ContentVersion ContentVersionFor : InsertContentVersion)
+        {
+            ContentVersionId.add(ContentVersionFor.Id);
+        }
+       
+        for(ContentVersion ContentVersionFor : [Select id, Title, ContentDocumentId,FileExtension from ContentVersion where id =: ContentVersionId])
+        {
+            ContentDocumentLink cDocLink = new ContentDocumentLink();
+            cDocLink.ContentDocumentId = ContentVersionFor.ContentDocumentId;
+            cDocLink.LinkedEntityId = ContentDocuName.get(ContentVersionFor.Title).ParentId;
+            InsertContentDocumentLink.add(cDocLink);
+            
+            DumpsterName_ContentDocId.put(ContentVersionFor.ContentDocumentId, ContentDocuName.get(ContentVersionFor.Title).Parent.Name);
+            
+            ContentDistribution ContentDistributionNew = new ContentDistribution();
+            ContentDistributionNew.Name = ContentVersionFor.Title;
+            ContentDistributionNew.ContentVersionId = ContentVersionFor.id;
+            ContentDistributionNew.PreferencesAllowViewInBrowser= true;
+            ContentDistributionNew.PreferencesLinkLatestVersion=true;
+            ContentDistributionNew.PreferencesNotifyOnVisit=false;
+            ContentDistributionNew.PreferencesPasswordRequired=false;
+            ContentDistributionNew.PreferencesAllowOriginalDownload= true;
+            ContentDistributionNew.PreferencesAllowPDFDownload = false;
+            ContentDistributionList.add(ContentDistributionNew);
+            
+            FailedContentversions.put(ContentDocuName.get(ContentVersionFor.Title).Parent.Name, ContentVersionFor);
+        }
+        
+        try
+        {
+            if(InsertContentVersion.size() > 0)
+            {
+                insert InsertContentDocumentLink;
+            }
+            
+            if(ContentDistributionList.size() > 0)
+            {
+                insert ContentDistributionList;
+            }
+        }
+        catch(Exception e)
+        {
+            System.debug(e);
+            SendingErrorEmail(String.valueOf(e), Dumpster_Invoice_Name);
+            FailedBody = true;
+        }
+        
+        system.debug(DumpsterName_ContentDocId);
+        for(ContentDistribution ContentDistributionFor : [SELECT Id, Name, DistributionPublicUrl, ContentDocumentId, ContentDownloadUrl FROM ContentDistribution where ContentDocumentId = : DumpsterName_ContentDocId.keyset()])
+        {
+            DumpsterContentDistribution.put(DumpsterName_ContentDocId.get(ContentDistributionFor.ContentDocumentId), ContentDistributionFor);
+        }
+        system.debug(DumpsterContentDistribution);
+        
+        try
+        {
+            
+            for(Dumpster_Invoice__c DumpsterInvoiceFor : DumpsterInvoiceMap.values())
+            {
+                mailattachments = new List<Messaging.EmailFileAttachment>();
+                
+                Messaging.SingleEmailMessage mail = new Messaging.SingleEmailMessage();
+                
+                mail.setSubject( 'Invoice '+DumpsterInvoiceFor.name+' from Haulbrooke Dumpster Rental');
+                
+                String EmailBody = 'Dear Sir / Madam,\n\nPlease find the attached invoice for your records. Please note that the .html attachments need to be downloaded within 30 days from this email date, as they expire after that. This is for our following References:\n\n';
+                
+                if(DumpsterName.containskey(DumpsterInvoiceFor.Id))
+                {
+                    for(String Stringfor : DumpsterName.get(DumpsterInvoiceFor.Id))
+                    {
+                        if(DumpsterContentDistribution.containskey(Stringfor) && !FailedBody)
+                        {
+                            EmailBody += Stringfor + ' - <a href=' + DumpsterContentDistribution.get(Stringfor).DistributionPublicUrl + '>Receipt</a>\n\n';
+                        }
+                        else
+                        {
+                            if(DumpsterAttachment.containskey(Stringfor))
+                            {
+                                Messaging.EmailFileAttachment efa = new Messaging.EmailFileAttachment();
+                                //system.debug('DumpsterAttachment.get(Stringfor).ContentType='+DumpsterAttachment.get(Stringfor).ContentType);
+                                efa.setFileName(DumpsterAttachment.get(Stringfor).Name);
+                                efa.setBody(DumpsterAttachment.get(Stringfor).Body);
+                                mailattachments.add(efa);
+                            }
+                        }
+                    }
+                }
+                
+                EmailBody += 'Thank you for your business - we appreciate it very much. \n\n\nFinance Department \nHaulbrooke \nAustin (512) 265 1000 | Houston (713) 742 6070 | San Antonio (210) 716 0000 \nfinance.department@haul-brooke.com\n\nInternal record link: ' + URL.getSalesforceBaseUrl().toExternalForm() + '/' + DumpsterInvoiceFor.Id;
+                mail.setHtmlBody(EmailBody.replaceall('\n','<br/>'));
+                
+                mail.setTargetObjectId(DumpsterInvoiceFor.CreatedById);
+                mail.setTreatTargetObjectAsRecipient(false);
+                mail.saveAsActivity = false;
+                mail.setUseSignature(false);
+                
+                String[] toaddress = new String[]{};
+                String[] ccaddress = new String[]{};
+                if(DumpsterInvoiceFor.Customer_Email__c!=null && !(DumpsterInvoiceFor.Account__r.Name.contains(label.AccountName)))
+                {
+                toaddress.add(DumpsterInvoiceFor.Customer_Email__c);
+                }
+                if(DumpsterInvoiceFor.Additional_Email__c!=null)
+                { 
+                    toaddress.add(DumpsterInvoiceFor.Additional_Email__c);
+                }
+                if(DumpsterInvoiceFor.Additional_Email2__c!=null)
+                { 
+                    toaddress.add(DumpsterInvoiceFor.Additional_Email2__c);
+                }
+                if(DumpsterInvoiceFor.Additional_Email3__c!=null)
+                { 
+                    toaddress.add(DumpsterInvoiceFor.Additional_Email3__c);
+                }
+                if(DInvoiceHelper.CCAddress__c!=null)
+                {
+                    ccaddress.add(DInvoiceHelper.CCAddress__c);
+                }
+                mail.setCCAddresses(ccaddress);
+                if(Label.Dumpster_Invoice_BCC !=null && Label.Dumpster_Invoice_BCC !='Test')
+                {
+                    mail.setBCCAddresses(new String[] {Label.Dumpster_Invoice_BCC});
+                }
+                mail.setToAddresses(toaddress);
+                if(DInvoiceHelper.OrgWideAddressId__c!=null)
+                {
+                    mail.setOrgWideEmailAddressId(DInvoiceHelper.OrgWideAddressId__c);
+                }
+                
+                PageReference ref = Page.Invoice_Preview;
+                ref.getParameters().put('id', String.valueOf(DumpsterInvoiceFor.Id));
+                Blob b;
+                if(!Test.isRunningTest())
+                    b = ref.getContentAsPDF();
+                else
+                    b = blob.valueOf('Test ignore this');
+                
+                Messaging.EmailFileAttachment efa1 = new Messaging.EmailFileAttachment();
+                efa1.setFileName('Haulbrooke Invoice '+DumpsterInvoiceFor.name+'.pdf');
+                efa1.setBody(b);
+                mailattachments.add(efa1);
+                
+                system.debug(mailattachments);
+                mail.setFileAttachments(mailattachments);
+                maillist.add(mail);
+            }
+            system.debug(maillist.size());
+            if(maillist.size() > 0)
+            {
+                Messaging.sendEmail(maillist);
+                system.debug('Mail Successfully sent');
+            }
+        }
+        catch(exception e)
+        {
+            system.debug('Exception raised due to '+e);
+            SendingErrorEmail(String.valueOf(e), Dumpster_Invoice_Name);
+        }
+    }
+    
+    /*==================Ticket No : 35437 ==================================
+
+*Method Name     : SendingErrorEmail
+*Description     : Send Exception email if Invoice exception raised.
+*Arguments       : ErrorString
+======================================================================*/
+    
+    public static void SendingErrorEmail(String ErrorString, Set<String> Dumpster_Invoice_Name)
+    {
+        if(ErrorString != ' ')
+        {
+            
+            Messaging.SingleEmailMessage mail = new Messaging.SingleEmailMessage();
+            String EmailToAddress = Label.Warren_Email; 
+            System.debug(EmailToAddress);
+            if(EmailToAddress!=null)
+            {
+                try
+                {
+                    String[] toAddresses = new String[] {EmailToAddress,Label.Merfantz_Support_Mail};
+                        mail.setToAddresses(toAddresses);
+                    mail.setSenderDisplayName('Salesforce Support');
+                    mail.setSubject('Dumpster Invoice Email failed');
+                    mail.setUseSignature(false);
+                    mail.saveAsActivity = false;
+                    mail.setHtmlBody('Hi Warren, <br/><br/>Your Dumpster Invoice failed due to <b>'+ErrorString+'</b><br/><br/>Dumpster Invoice - '+String.join(new list<String>(Dumpster_Invoice_Name), ', ')+'.<br/><br/><b>Regards,<br/>Salesforce Support</b>');
+                    Messaging.sendEmail(new Messaging.SingleEmailMessage[] { mail });
+                }
+                catch(exception e)
+                {
+                    System.debug('Exception raised due to ->'+e);
+                }
+            }
+        }
+    }
+    
+    public void updateweeklycardrun(Map<ID, Dumpster_Invoice__c> newMap)
+    {
+        Map<String, String> Dumpster_CardRuns = new Map<String, String>();
+        List<Dumpsters__c> DumpsterUpdate = new List<Dumpsters__c>();
+        
+        for(Dumpster_Invoice__c Dumpster_Invoice_For : newMap.values())
+        {
+            String[] DumpsterNames = Dumpster_Invoice_For.Weekly_Consolidate_Invoice__c.split(' - ');
+            
+            for(String Stringfor : DumpsterNames)
+            {
+                Dumpster_CardRuns.put(Stringfor, Dumpster_Invoice_For.Card_Run__c);
+            }
+        }
+        system.debug(Dumpster_CardRuns);
+        for(Dumpsters__c Dumpsterfor : [Select id, Name, Card_Run__c from Dumpsters__c where Name =: Dumpster_CardRuns.keyset()])
+        {
+            system.debug(Dumpsterfor.Card_Run__c + ' ' + Dumpster_CardRuns.get(Dumpsterfor.Name));
+            if(Dumpsterfor.Card_Run__c != Dumpster_CardRuns.get(Dumpsterfor.Name))
+            {    
+                Dumpsterfor.Card_Run__c = Dumpster_CardRuns.get(Dumpsterfor.Name);
+                DumpsterUpdate.add(Dumpsterfor);
+            }
+        }
+        system.debug(DumpsterUpdate);
+        if(DumpsterUpdate.size() > 0)
+        {
+            update DumpsterUpdate;
+        }
+    }
+    
+    @future(callout=true)
+    public static void send_copy_invoice_email_landfill(Set<Id> DumpsterInvoiceIdSet)
+    {
+        Set<Id> DumpstersId = new Set<Id>();
+        Set<Id> AttachmentsId = new Set<Id>();
+        Messaging.SingleEmailMessage[] messages = new List<Messaging.SingleEmailMessage>();
+        List<Messaging.SingleEmailMessage> mails = new List<Messaging.SingleEmailMessage>();
+        List<Messaging.EmailFileAttachment> mailattachments = new List<Messaging.EmailFileAttachment>();
+        Map<Id, Attachment> Invoice_Attachment = new Map<Id, Attachment>();
+        Map<Id, ContentVersion> Invoice_ContentVersion = new Map<Id, ContentVersion>();
+        Map<Id, Id> Dumpster_ContentDocId = new Map<Id, Id>();
+        Map<Id, Dumpster_Invoice__c> DumpsterInvoiceMap = new Map<Id, Dumpster_Invoice__c>();
+            
+        EmailTemplate emailTemplatemail = new EmailTemplate();
+        
+        Dumpster_Invoice_Email_Helper__c DInvoiceHelper = Dumpster_Invoice_Email_Helper__c.getValues('Send Landfill Receipt');
+        
+        for(Dumpster_Invoice__c Dumpster_Invoice_For : [select id,name,Dumpster_Sync__c,Weekly_Consolidate_Invoice__c,createdById,Customer_Email__c,Additional_Email__c,Additional_Email2__c,Additional_Email3__c,Account__c,dumpsters__c,dumpsters__r.name from Dumpster_Invoice__c where id =: DumpsterInvoiceIdSet])
+        {
+            DumpsterInvoiceMap.put(Dumpster_Invoice_For.id, Dumpster_Invoice_For);
+            DumpstersId.add(Dumpster_Invoice_For.Dumpsters__c);
+        }
+        
+        for(EmailTemplate EmailTemplateFor : [Select Id,Subject,Description,HtmlValue,DeveloperName,Body from EmailTemplate where name ='Dumpster Invoice Template - Copy' limit 1])
+        {
+            emailTemplatemail = EmailTemplateFor;
+        }
+        
+        for(Dumpsters__c DumpstersFor :  [Select id, Name, (Select id, Name, createddate,ContentType from Attachments order by createddate desc Limit 1), (Select Id, SystemModstamp, ContentDocumentId from ContentDocumentLinks order by SystemModstamp desc Limit 1) from Dumpsters__c where Id =: DumpstersId])
+        {
+            ContentDocumentLink ContentDocumentLinksFor = new ContentDocumentLink();
+            if(DumpstersFor.ContentDocumentLinks.size() > 0)
+            {
+                ContentDocumentLinksFor =  DumpstersFor.ContentDocumentLinks;
+                Dumpster_ContentDocId.put(ContentDocumentLinksFor.ContentDocumentId, DumpstersFor.Id);
+            }
+            
+            if(DumpstersFor.Attachments.size() > 0)
+            {
+                Attachment AttachmentFor = DumpstersFor.Attachments;
+                if((DumpstersFor.ContentDocumentLinks.size() > 0 && ContentDocumentLinksFor.SystemModstamp < AttachmentFor.createddate) || DumpstersFor.ContentDocumentLinks.size() == 0)
+                {
+                    AttachmentsId.add(AttachmentFor.Id);
+                    //Invoice_Attachment.put(DumpstersFor.Id, AttachmentFor);
+                    Dumpster_ContentDocId.remove(ContentDocumentLinksFor.ContentDocumentId);
+                }
+            }
+        }
+        
+        for(Attachment AttachmentFor : [Select id, Name, body, parentId,ContentType from Attachment where id =: AttachmentsId])
+        {
+            Invoice_Attachment.put(AttachmentFor.parentid, AttachmentFor);
+        }
+        
+        system.debug(Invoice_Attachment);
+                
+        if(Dumpster_ContentDocId.size() > 0)
+        {
+            for(ContentVersion ContentVersionFor : [Select id, Title, VersionData, ContentDocumentId,FileExtension from ContentVersion where ContentDocumentId =: Dumpster_ContentDocId.keyset()])
+            {
+                if(!Invoice_Attachment.containskey(Dumpster_ContentDocId.get(ContentVersionFor.ContentDocumentId)))
+                {
+                    Invoice_ContentVersion.put(Dumpster_ContentDocId.get(ContentVersionFor.ContentDocumentId), ContentVersionFor);
+                }
+            }
+        }
+        system.debug(Invoice_ContentVersion);
+            
+        for(Dumpster_Invoice__c Dump : DumpsterInvoiceMap.Values())
+        {
+            string[] toadd = new string[] {Label.Delete_Notification_Email};
+                
+            Messaging.SingleEmailMessage mail = new Messaging.SingleEmailMessage();
+            mail.toAddresses=toadd;
+            String[] toaddress = new String[]{};
+            String[] ccaddress = new String[]{};
+            if(Dump.Customer_Email__c!=null )
+            {
+                toaddress.add(Dump.Customer_Email__c);
+            }
+            if(Dump.Additional_Email__c!=null)
+            { 
+                toaddress.add(Dump.Additional_Email__c);
+            }
+            if(Dump.Additional_Email2__c!=null)
+            { 
+                toaddress.add(Dump.Additional_Email2__c);
+            }
+            if(Dump.Additional_Email3__c!=null)
+            { 
+                toaddress.add(Dump.Additional_Email3__c);
+            }
+            if(DInvoiceHelper.CCAddress__c!=null)
+            {
+                ccaddress.add(DInvoiceHelper.CCAddress__c);
+            }
+            system.debug(ccaddress);
+            mail.setCCAddresses(ccaddress);
+            if(Label.Dumpster_Invoice_BCC !=null && Label.Dumpster_Invoice_BCC !='Test')
+            {
+                mail.setBCCAddresses(new String[] {Label.Dumpster_Invoice_BCC});
+            }
+            mail.setToAddresses(toaddress);
+            if(DInvoiceHelper.OrgWideAddressId__c!=null)
+            {
+                mail.setOrgWideEmailAddressId(DInvoiceHelper.OrgWideAddressId__c);
+            }
+            
+            if(Invoice_Attachment.containskey(Dump.Dumpsters__c))
+            {
+                Messaging.EmailFileAttachment efa = new Messaging.EmailFileAttachment();
+                efa.setFileName(Invoice_Attachment.get(Dump.Dumpsters__c).Name+'.'+Invoice_Attachment.get(Dump.Dumpsters__c).ContentType);                
+                efa.setBody(Invoice_Attachment.get(Dump.Dumpsters__c).Body);
+                mailattachments.add(efa);
+            }
+            
+            if(Invoice_ContentVersion.containskey(Dump.Dumpsters__c))
+            {
+                Messaging.EmailFileAttachment efa = new Messaging.EmailFileAttachment();
+                efa.setFileName(Invoice_ContentVersion.get(Dump.Dumpsters__c).Title+'.'+Invoice_ContentVersion.get(Dump.Dumpsters__c).FileExtension);
+                efa.setBody(Invoice_ContentVersion.get(Dump.Dumpsters__c).VersionData);
+                mailattachments.add(efa);
+            }
+            
+            PageReference ref = Page.Invoice_Preview;
+            ref.getParameters().put('id', String.valueOf(Dump.Id));
+            Blob b;
+            if(!Test.isRunningTest())
+                b = ref.getContentAsPDF();
+            else
+                b = blob.valueOf('Test ignore this');
+            
+            Messaging.EmailFileAttachment efa1 = new Messaging.EmailFileAttachment();
+            efa1.setFileName('Haulbrooke Invoice '+Dump.name+'.pdf');
+            efa1.setBody(b);
+            mailattachments.add(efa1);
+            
+            mail.setSubject(Messaging.renderStoredEmailTemplate(emailTemplatemail.Id,UserInfo.getUserId(), Dump.Id).getSubject());
+            mail.setHtmlBody(Messaging.renderStoredEmailTemplate(emailTemplatemail.Id,UserInfo.getUserId(), Dump.Id).getplaintextbody().replace('\n','<br/>'));
+            mail.saveAsActivity = false;
+            mail.setUseSignature(false);
+            if(mailattachments.size() > 0)
+                mail.setFileAttachments(mailattachments);
+            mails.add(mail); 
+            
+        }
+        if(mails.size()>0){
+            Messaging.sendEmail(mails);
+        }
+    }
+}
